@@ -4,6 +4,7 @@ import akka.actor._
 import akka.routing.RoundRobinRouter
 import akka.util.Duration
 import akka.util.duration._
+import akka.remote.RemoteClientError
 
 sealed trait PiMessage
 case object Calculate extends PiMessage
@@ -12,8 +13,6 @@ case class Result(value: Double) extends PiMessage
 case class PiApproximation(pi: Double, duration: Duration) extends PiMessage
 
 class Worker extends Actor {
-
-  // calculatePiFor ...
 
   def receive = {
     case Work(start, nrOfElements) =>
@@ -63,12 +62,15 @@ class Listener extends Actor {
       println("\n\tPi approximation: \t\t%s\n\tCalculation time: \t%s"
         .format(pi, duration))
       context.system.shutdown()
+    case e: RemoteClientError =>
+      println("Slave connection problem, giving up: " + e.toString)
+      context.system.shutdown()
   }
 }
 
 object Pi extends App {
 
-  calculate(nrOfWorkers = Runtime.getRuntime().availableProcessors(), nrOfElements = 10000, nrOfMessages = 100000)
+  calculate(nrOfWorkers = Runtime.getRuntime().availableProcessors(), nrOfElements = 10000, nrOfMessages = 10000)
 
   // actors and messages ...
 
@@ -79,6 +81,7 @@ object Pi extends App {
     // create the result listener, which will print the result and 
     // shutdown the system
     val listener = system.actorOf(Props[Listener], name = "listener")
+    system.eventStream.subscribe(listener, classOf[RemoteClientError])
 
     // create the master
     val master = system.actorOf(Props(new Master(
